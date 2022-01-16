@@ -1,16 +1,20 @@
-import util.csv.CsvEdge
-import util.csv.CsvReader
-import rest.GeoPoint
 import graph.GraphBuilder
 import io.javalin.Javalin
 import io.javalin.http.staticfiles.Location
+import org.eclipse.jetty.server.Server
+import org.eclipse.jetty.server.ServerConnector
+import org.eclipse.jetty.util.ssl.SslContextFactory
 import rest.ApiController
+import rest.GeoPoint
+import util.csv.CsvEdge
+import util.csv.CsvReader
 import java.io.File
 import java.io.FileReader
 import java.io.IOException
 import java.lang.Double.parseDouble
 import java.nio.charset.Charset
 import kotlin.system.exitProcess
+
 
 class MainKt {
     companion object {
@@ -60,7 +64,7 @@ class MainKt {
                 config.addStaticFiles("/", "ui/build", Location.EXTERNAL)
                 config.addStaticFiles("/data", "data", Location.EXTERNAL)
             }
-            app.start(7000)
+            app.start(8080)
             app.post("/api/nav", controller::navigate)
             app.post("/api/service-area", controller::getServiceArea)
             app.post("/api/shadow-map", controller::getShadowMap)

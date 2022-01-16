@@ -1,0 +1,6 @@
+/data
+/ui/node_modules
+/ui/build
+/.idea
+/.gradle
+/certs
