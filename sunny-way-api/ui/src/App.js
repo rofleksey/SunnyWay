@@ -65,7 +65,7 @@ function postPath(markers, curTime, timeSampling, preferShadow, algorithm, prope
 			[property]: true,
 		}));
 	}).catch((e) => {
-		const errStr = e?.response?.data?.title ?? e.toString();
+		const errStr = e?.response?.data?.message ?? e.toString();
 		setNetworkState((oldState) => ({
 			...oldState,
 			error: errStr,
@@ -184,7 +184,7 @@ function App() {
 	const renderer = useMemo(() => new Canvas({ padding: 0.5, tolerance: 5 }), []);
 	const debounceFetchPaths = useMemo(() => debounce(fetchPaths, 500), []);
 	useEffect(() => {
-		axios.post('/api/service-area').then((res) => {
+		axios.get('/api/service-area').then((res) => {
 			const area = [];
 			res.data.polygon.forEach((point) => {
 				area.push([point.lat, point.lon]);

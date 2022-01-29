@@ -41,10 +41,12 @@ spec:
             httpGet:
               path: /
               port: 8080
+            initialDelaySeconds: 30
           readinessProbe:
             httpGet:
               path: /
               port: 8080
+            initialDelaySeconds: 30
       volumes:
         - name: sunny-way-data
           hostPath:
