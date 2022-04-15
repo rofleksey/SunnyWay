@@ -15,7 +15,6 @@ class NavigationService(graph: GraphComponent) {
     private val distanceNavigator = DistanceNavigator(graph.graph, mapBoundFactory)
     private val discreteShadowNavigator = DiscreteShadowNavigator(graph.graph, mapBoundFactory)
 
-    @Synchronized
     fun navigate(req: NavigationRequest, algorithm: Algorithm): NavigationResult {
         val navigator = when (algorithm) {
             Algorithm.DISTANCE -> distanceNavigator

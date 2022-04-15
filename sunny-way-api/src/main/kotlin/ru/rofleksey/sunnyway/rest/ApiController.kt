@@ -2,8 +2,6 @@ package ru.rofleksey.sunnyway.rest
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import ru.rofleksey.sunnyway.nav.NavigationException
@@ -39,7 +37,6 @@ open class ApiController(
         return UserShadowMapResponse(map)
     }
 
-    // TODO: logging
     @PostMapping("/nav")
     fun navigate(@RequestBody req: UserNavigationRequest): UserNavigationResponse {
         val locationTime = System.currentTimeMillis()
@@ -60,14 +57,9 @@ open class ApiController(
             System.currentTimeMillis() - processingTime
         )
         if (result.path.isEmpty()) {
+            log.info("No path found #{}->#{}", fromId, toId)
             throw NavigationException("No path found")
         }
         return UserNavigationResponse(result)
-    }
-
-    @ExceptionHandler(NavigationException::class)
-    fun handleNavigationException(e: NavigationException): ResponseEntity<ErrorResponse> {
-        val response = ErrorResponse(HttpStatus.BAD_REQUEST, e.localizedMessage)
-        return ResponseEntity(response, HttpStatus.BAD_REQUEST)
     }
 }

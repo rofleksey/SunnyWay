@@ -1,72 +1,138 @@
 package ru.rofleksey.sunnyway.util.kdtree
 
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+
 class KdTree private constructor(private val metric: KdMetric) {
     companion object {
-        fun fromPoints(points: List<KdEntry>, metric: KdMetric): KdTree {
-            val sorted = points.sortedBy { it.point }
-            val tree = KdTree(metric)
-            sorted.forEach { entry ->
-                tree.insert(entry)
+        private fun fromPointsImpl(
+            tree: KdTree,
+            points: MutableList<KdEntry>,
+            parent: KdNode?,
+            isVertical: Boolean,
+            fromIndex: Int,
+            toIndex: Int
+        ) {
+            if (toIndex - fromIndex == 0) {
+                return
             }
+            if (toIndex - fromIndex == 1) {
+                tree.insert(points[fromIndex], parent)
+                return
+            }
+            if (isVertical) {
+                points.subList(fromIndex, toIndex).sortBy { it.point.x }
+            } else {
+                points.subList(fromIndex, toIndex).sortBy { it.point.y }
+            }
+            var mid = fromIndex + (toIndex - fromIndex) / 2
+            val medianToFind = if (isVertical) {
+                points[mid].point.x
+            } else {
+                points[mid].point.y
+            }
+            while (mid > fromIndex) {
+                if (isVertical && points[mid - 1].point.x >= medianToFind
+                    || !isVertical && points[mid - 1].point.y >= medianToFind
+                ) {
+                    mid--
+                    continue
+                }
+                break
+            }
+            val newParent = tree.insert(points[mid], parent)
+            fromPointsImpl(tree, points, newParent, !isVertical, fromIndex, mid)
+            fromPointsImpl(tree, points, newParent, !isVertical, mid + 1, toIndex)
+        }
+
+        fun fromPoints(points: List<KdEntry>, metric: KdMetric): KdTree {
+            val tree = KdTree(metric)
+            fromPointsImpl(tree, ArrayList(points), null, true, 0, points.size)
             return tree
         }
-    }
-    private var root: KdNode? = null
 
-    private fun insert(node: KdNode?, entry: KdEntry, vertical: Boolean): KdNode {
+        private val log: Logger = LoggerFactory.getLogger(KdTree::class.java)
+    }
+
+    private var root: KdNode? = null
+    var size = 0
+
+    private fun insertImpl(node: KdNode?, entry: KdEntry, vertical: Boolean, data: KdInsertData): KdNode {
         if (node == null) {
-            return KdNode(entry.id, entry.point, null, null, vertical)
+            val newNode = KdNode(entry.id, entry.point, null, null, vertical)
+            data.newNode = newNode
+            return newNode
         }
-        if (node.point.x == entry.point.x && node.point.y == entry.point.y) {
+        if (node.id == entry.id) {
             return node
         }
         if (node.vertical && entry.point.x < node.point.x || !node.vertical && entry.point.y < node.point.y) {
-            node.left = insert(node.left, entry, !node.vertical)
+            node.left = insertImpl(node.left, entry, !node.vertical, data)
         } else {
-            node.right = insert(node.right, entry, !node.vertical)
+            node.right = insertImpl(node.right, entry, !node.vertical, data)
         }
         return node
     }
 
-    private fun insert(entry: KdEntry) {
-        root = insert(root, entry, true)
+    data class KdInsertData(var newNode: KdNode?)
+
+    private fun insert(entry: KdEntry, node: KdNode? = null): KdNode? {
+        val insertData = KdInsertData(null)
+        if (node == null) {
+            root = insertImpl(root, entry, true, insertData)
+        } else {
+            insertImpl(node, entry, node.vertical, insertData)
+        }
+        size++
+        return insertData.newNode
     }
 
-    data class KdNearestData(var closest: KdNode?, var minDistance: Double)
+    data class KdNearestData(var closest: KdNode?, var minDistance: Double, var visitedNodes: Int)
 
-    private fun nearest(
+    private fun recalculateDistance(
+        node: KdNode,
+        target: KdPoint,
+        data: KdNearestData
+    ) {
+        val dist = metric.distance(target, node.point)
+        if (dist < data.minDistance) {
+            data.minDistance = dist
+            data.closest = node
+        }
+    }
+
+    private fun nearestImpl(
         node: KdNode?,
-        point: KdPoint,
+        target: KdPoint,
         requestData: KdNearestData
     ) {
         if (node == null) {
             return
         }
-        val dist = metric.distance(point, node.point)
-        if (dist < requestData.minDistance) {
-            requestData.minDistance = dist
-            requestData.closest = node
-        }
-        if (node.vertical && point.x < node.point.x || !node.vertical && point.y < node.point.y) {
-            nearest(node.left, point, requestData)
-            if (node.vertical && point.x + requestData.minDistance >= node.point.x || !node.vertical && point.y + requestData.minDistance >= node.point.y) {
-                nearest(node.right, point, requestData)
+        requestData.visitedNodes++
+        if (node.vertical && target.x < node.point.x || !node.vertical && target.y < node.point.y) {
+            nearestImpl(node.left, target, requestData)
+            recalculateDistance(node, target, requestData)
+            if (node.vertical && target.x + requestData.minDistance >= node.point.x || !node.vertical && target.y + requestData.minDistance >= node.point.y) {
+                nearestImpl(node.right, target, requestData)
             }
         } else {
-            nearest(node.right, point, requestData)
-            if (node.vertical && point.x - requestData.minDistance <= node.point.x || !node.vertical && point.y - requestData.minDistance <= node.point.y) {
-                nearest(node.left, point, requestData)
+            nearestImpl(node.right, target, requestData)
+            recalculateDistance(node, target, requestData)
+            if (node.vertical && target.x - requestData.minDistance <= node.point.x || !node.vertical && target.y - requestData.minDistance <= node.point.y) {
+                nearestImpl(node.left, target, requestData)
             }
         }
     }
 
-    fun nearest(point: KdPoint, maxDistance: Double): Int? {
-        val requestData = KdNearestData(null, maxDistance)
-        nearest(root, point, requestData)
-        return requestData.closest?.id
+    fun nearest(point: KdPoint, maxDistance: Double): KdNearestData {
+        val requestData = KdNearestData(null, maxDistance, 0)
+        nearestImpl(root, point, requestData)
+        log.debug("visited {}/{} tree nodes", requestData.visitedNodes, size)
+        return requestData
     }
 
-    private fun nearestAll(
+    private fun allNearestImpl(
         node: KdNode?,
         point: KdPoint,
         distance: Double,
@@ -79,22 +145,17 @@ class KdTree private constructor(private val metric: KdMetric) {
         if (dist <= distance) {
             result.add(node.id)
         }
-        if (node.vertical && point.x < node.point.x || !node.vertical && point.y < node.point.y) {
-            nearestAll(node.left, point, distance, result)
-            if (node.vertical && point.x + distance >= node.point.x || !node.vertical && point.y + distance >= node.point.y) {
-                nearestAll(node.right, point, distance, result)
-            }
-        } else {
-            nearestAll(node.right, point, distance, result)
-            if (node.vertical && point.x - distance <= node.point.x || !node.vertical && point.y - distance <= node.point.y) {
-                nearestAll(node.left, point, distance, result)
-            }
+        if (node.vertical && point.x - distance <= node.point.x || !node.vertical && point.y - distance <= node.point.y) {
+            allNearestImpl(node.left, point, distance, result)
+        }
+        if (node.vertical && point.x + distance >= node.point.x || !node.vertical && point.y + distance >= node.point.y) {
+            allNearestImpl(node.right, point, distance, result)
         }
     }
 
-    fun nearestAll(point: KdPoint, distance: Double): List<Int> {
+    fun allNearest(point: KdPoint, distance: Double): List<Int> {
         val result = ArrayList<Int>()
-        nearestAll(root, point, distance, result)
+        allNearestImpl(root, point, distance, result)
         return result
     }
 }

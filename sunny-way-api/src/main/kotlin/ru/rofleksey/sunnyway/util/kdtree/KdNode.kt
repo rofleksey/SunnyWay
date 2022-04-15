@@ -13,12 +13,12 @@ class KdNode(
 
         other as KdNode
 
-        if (point != other.point) return false
+        if (id != other.id) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        return point.hashCode()
+        return id.hashCode()
     }
 }

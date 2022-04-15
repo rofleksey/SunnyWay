@@ -14,10 +14,7 @@ import ru.rofleksey.sunnyway.util.kdtree.KdTree
 import java.io.File
 import java.io.FileReader
 import java.io.IOException
-import java.lang.Double
 import java.nio.charset.Charset
-import kotlin.Exception
-import kotlin.Int
 import kotlin.system.exitProcess
 
 
@@ -43,15 +40,15 @@ class GraphComponent(private val shutdownManager: ShutdownManager) {
             val edges = CsvReader(FileReader(file, Charset.forName("UTF-8"))).use { reader ->
                 reader.readHeader()
                 reader.sequence().map { row ->
-                    val start = GeoPoint(Double.parseDouble(row["start_lat"]), Double.parseDouble(row["start_lon"]))
-                    val end = GeoPoint(Double.parseDouble(row["end_lat"]), Double.parseDouble(row["end_lon"]))
+                    val start = GeoPoint(row["start_lat"]!!.toDouble(), row["start_lon"]!!.toDouble())
+                    val end = GeoPoint(row["end_lat"]!!.toDouble(), row["end_lon"]!!.toDouble())
                     CsvEdge(
                         start = start,
                         end = end,
-                        leftShadow = Double.parseDouble(row["left_shadow"]),
-                        rightShadow = Double.parseDouble(row["right_shadow"]),
-                        distance = Double.parseDouble(row["distance"]),
-                        direction = Double.parseDouble(row["direction"]),
+                        leftShadow = row["left_shadow"]!!.toDouble(),
+                        rightShadow = row["right_shadow"]!!.toDouble(),
+                        distance = row["distance"]!!.toDouble(),
+                        direction = row["direction"]!!.toDouble(),
                     )
                 }.toList()
             }
@@ -72,18 +69,18 @@ class GraphComponent(private val shutdownManager: ShutdownManager) {
     }
 
     @Synchronized
-    fun locate(point: GeoPoint, maxDistance: kotlin.Double): Int? {
+    fun locate(point: GeoPoint, maxDistance: Double): Int? {
         val newX = Math.toRadians(point.lat)
         val newY = Math.toRadians(point.lon)
         val newDist = maxDistance / Util.EARTH_RADIUS_M
-        return kdTree.nearest(KdPoint(newX, newY), newDist)
+        return kdTree.nearest(KdPoint(newX, newY), newDist).closest?.id
     }
 
     @Synchronized
-    fun locateAll(point: GeoPoint, distance: kotlin.Double): List<Int> {
+    fun locateAll(point: GeoPoint, distance: Double): List<Int> {
         val newX = Math.toRadians(point.lat)
         val newY = Math.toRadians(point.lon)
         val newDist = distance / Util.EARTH_RADIUS_M
-        return kdTree.nearestAll(KdPoint(newX, newY), newDist)
+        return kdTree.allNearest(KdPoint(newX, newY), newDist)
     }
 }
