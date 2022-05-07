@@ -50,4 +50,4 @@ spec:
       volumes:
         - name: sunny-way-data
           hostPath:
-            path: /home/roflex/sunny-way-data
+            path: /root/sunny-way-data

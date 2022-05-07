@@ -1,1 +1,3 @@
 .idea
+converter/*.osm
+converter/*.csv

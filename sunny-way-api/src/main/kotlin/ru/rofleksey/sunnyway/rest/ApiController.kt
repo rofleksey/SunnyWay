@@ -11,6 +11,11 @@ import ru.rofleksey.sunnyway.rest.dao.*
 import ru.rofleksey.sunnyway.rest.service.NavigationService
 import ru.rofleksey.sunnyway.rest.service.ServiceAreaService
 import ru.rofleksey.sunnyway.rest.service.ShadowMapService
+import ru.rofleksey.sunnyway.rest.types.NavigationEdge
+import ru.rofleksey.sunnyway.util.Util
+import ru.rofleksey.sunnyway.util.sun.Sun
+import ru.rofleksey.sunnyway.util.sun.SunResult
+import java.util.*
 
 @RestController
 @RequestMapping("api")
@@ -22,6 +27,7 @@ open class ApiController(
 ) : WebMvcConfigurer {
     companion object {
         private const val MAX_DISTANCE_DEFAULT = 100.0
+        private const val MAX_SHADOW_MAP_RADIUS = 750.0
         private val log: Logger = LoggerFactory.getLogger(ApiController::class.java)
     }
 
@@ -31,10 +37,58 @@ open class ApiController(
         return UserPolygonResponse(list)
     }
 
+    @PostMapping("/sun")
+    fun getSun(@RequestBody req: UserSunRequest): UserSunResponse {
+        val result = Sun(req.center.lat, req.center.lon, 1).run {
+            setTime(Calendar.getInstance().apply {
+                timeInMillis = req.curTime
+            })
+            calculate()
+        }
+        return UserSunResponse(result.elevation, result.azimuth)
+    }
+
     @PostMapping("/shadow-map")
     fun getShadowMap(@RequestBody req: UserShadowMapRequest): UserShadowMapResponse {
-        val map = shadowMapService.getShadowMap(req.center, req.radius)
+        if (req.radius >= MAX_SHADOW_MAP_RADIUS) {
+            throw NavigationException("Radius too large")
+        }
+        val map = shadowMapService.getShadowMap(req.center, req.radius, req.time)
         return UserShadowMapResponse(map)
+    }
+
+    private fun mapToUser(edges: List<NavigationEdge>, departureTime: Long): List<UserNavigationEdge> {
+        if (edges.isEmpty()) {
+            return listOf()
+        }
+        val sun = Sun(edges[0].fromPoint.lat, edges[0].fromPoint.lon, 1)
+        var curTime = departureTime
+        val calendar = Calendar.getInstance()
+        return edges.map { edge ->
+            sun.setTime(calendar.apply {
+                timeInMillis = curTime
+            })
+            val traverseTime = (1000.0 * edge.distance / Util.PEDESTRIAN_SPEED).toLong()
+            curTime += traverseTime
+            val sunResult = sun.calculate()
+            val factor = if (sunResult.isSunUp()) {
+                sunResult.calculateFactor(
+                    edge.direction, edge.leftShadow, edge.rightShadow,
+                    true, SunResult.DEFAULT_MAX_FACTOR
+                )
+            } else {
+                0.0
+            }
+            UserNavigationEdge(
+                edge.fromPoint,
+                edge.toPoint,
+                edge.edgeId,
+                edge.toVertexId,
+                edge.distance,
+                traverseTime,
+                factor
+            )
+        }
     }
 
     @PostMapping("/nav")
@@ -45,7 +99,7 @@ open class ApiController(
         val toId = graph.locate(req.to, MAX_DISTANCE_DEFAULT)
             ?: throw NavigationException("Failed to locate ending point")
         log.info("Located points in {} ms", System.currentTimeMillis() - locationTime)
-        val navRequest = NavigationRequest(fromId, toId, req.curTime, req.timeSampling, req.preferShadow)
+        val navRequest = NavigationRequest(fromId, toId, req.curTime, req.maxFactor, req.preferShadow)
         log.info("Processing #{}->#{} ({})...", fromId, toId, req.algorithm)
         val processingTime = System.currentTimeMillis()
         val result = navigationService.navigate(navRequest, req.algorithm)
@@ -60,6 +114,7 @@ open class ApiController(
             log.info("No path found #{}->#{}", fromId, toId)
             throw NavigationException("No path found")
         }
-        return UserNavigationResponse(result)
+        val userEdges = mapToUser(result.path, req.curTime)
+        return UserNavigationResponse(UserNavigationResult(userEdges, result.computeTime))
     }
 }

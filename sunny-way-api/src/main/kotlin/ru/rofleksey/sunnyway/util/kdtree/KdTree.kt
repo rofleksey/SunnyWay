@@ -2,6 +2,7 @@ package ru.rofleksey.sunnyway.util.kdtree
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import java.util.concurrent.TimeUnit
 
 class KdTree private constructor(private val metric: KdMetric) {
     companion object {
@@ -47,7 +48,10 @@ class KdTree private constructor(private val metric: KdMetric) {
 
         fun fromPoints(points: List<KdEntry>, metric: KdMetric): KdTree {
             val tree = KdTree(metric)
+            val time = System.nanoTime()
             fromPointsImpl(tree, ArrayList(points), null, true, 0, points.size)
+            val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - time)
+            log.info("Built tree in {} ms", elapsed)
             return tree
         }
 

@@ -4,6 +4,6 @@ data class NavigationRequest (
     val fromId: Int,
     val toId: Int,
     val curTime: Long,
-    val timeSampling: Long,
+    val maxFactor: Double,
     val preferShadow: Boolean,
 )

@@ -1,22 +1,26 @@
-from typing import Any, List, Optional
+import csv
+import gc
+import itertools
+import math
+import utm
+import warnings
+from dataclasses import dataclass
+from enum import Enum
 from geographiclib.geodesic import Geodesic
 from lxml import etree
-from sklearn.neighbors import BallTree
-import itertools
-from tqdm import tqdm
-import csv
-import math
-from enum import Enum
-from dataclasses import dataclass
-from shapely.geometry import Point as ShapelyPoint
-from shapely.geometry.polygon import Polygon
-from shapely.geometry.collection import GeometryCollection
-from shapely.geometry.multipolygon import MultiPolygon
-from shapely.geometry.multipoint import MultiPoint
+from shapely.errors import ShapelyDeprecationWarning
 from shapely.geometry import LineString
+from shapely.geometry import Point as ShapelyPoint
+from shapely.geometry.collection import GeometryCollection
+from shapely.geometry.multipoint import MultiPoint
+from shapely.geometry.multipolygon import MultiPolygon
+from shapely.geometry.polygon import Polygon
 from shapely.validation import make_valid
-import utm
-import gc
+from sklearn.neighbors import BallTree
+from tqdm import tqdm
+from typing import Any, List
+
+warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
 SCAN_RADIUS = 25
 EARTH_RADIUS = 6371000
@@ -113,7 +117,7 @@ def consecutive_item_pairs(iterable):
 
 
 print('Loading map data...')
-with open('../../data/map.osm', mode="r", encoding="utf-8") as map_file:
+with open('map.osm', mode="r", encoding="utf-8") as map_file:
     tree = etree.parse(map_file)
     map = tree.getroot()
 print('Parsing xml objects...')
@@ -153,7 +157,7 @@ for way in tqdm(external_way_list):
         key = tag.get('k')
         value = tag.get('v')
         if key == 'highway':
-            if value == 'footway' or value == 'bridleway' or value == 'service' or value == 'pedestrian' or value == 'steps' or value == 'path':
+            if value == 'residential' or value == 'unclassified' or value == 'platform' or value == 'corridor' or value == 'elevator' or value == 'track' or value == 'cycleway' or value == 'living_street' or value == 'footway' or value == 'bridleway' or value == 'service' or value == 'pedestrian' or value == 'steps' or value == 'path':
                 # if True:
                 way_type = WayType.ROAD
             elif not (value in highway_types):
@@ -235,9 +239,12 @@ def get_buildings_in_rect(polygon, distance):
         parent_set.add(node.parent)
     result = []
     for parent in parent_set:
-        if parent.shape.intersects(polygon):
-            inter = make_valid(parent.shape).intersection(polygon)
-            break_geometry(inter, result, 10)
+        try:
+            if parent.shape.intersects(polygon):
+                inter = make_valid(parent.shape).intersection(polygon)
+                break_geometry(inter, result, 10)
+        except:
+            print("error intersecting forms, skipping")
     return result
 
 

@@ -5,7 +5,6 @@ import ru.rofleksey.sunnyway.graph.Graph
 import ru.rofleksey.sunnyway.graph.GraphEdge
 import ru.rofleksey.sunnyway.rest.types.NavigationEdge
 import ru.rofleksey.sunnyway.util.FibonacciHeap
-import ru.rofleksey.sunnyway.util.Util.Companion.PEDESTRIAN_SPEED
 import java.util.*
 
 class DistanceNavigator(private val graph: Graph, private val mapBoundFactory: MapBoundFactory) : Navigator {
@@ -31,22 +30,21 @@ class DistanceNavigator(private val graph: Graph, private val mapBoundFactory: M
         }
     }
 
-    private fun restorePath(toId: Int, graph: Graph): List<NavigationEdge> {
+    private fun restorePath(toId: Int): List<NavigationEdge> {
         val result = LinkedList<NavigationEdge>()
         var cur = toId
         while (prevEdge[cur] != null) {
             val edge = prevEdge[cur]!!
-            val time = (1000.0 * edge.distance / PEDESTRIAN_SPEED).toLong()
             result.add(
                 NavigationEdge(
                     edge.fromVertex.point,
                     edge.toVertex.point,
                     edge.graphId,
                     edge.toVertex.graphId,
-                    edge.distance,
-                    time,
-                    -1.0,
-                    mapOf()
+                    edge.direction,
+                    edge.leftShadow,
+                    edge.rightShadow,
+                    edge.distance
                 )
             )
             cur = edge.fromVertex.graphId
@@ -62,7 +60,7 @@ class DistanceNavigator(private val graph: Graph, private val mapBoundFactory: M
         while (!heap.isEmpty()) {
             val cur = heap.dequeueMin().value
             if (cur == req.toId) {
-                return restorePath(req.toId, graph)
+                return restorePath(req.toId)
             }
             for (edge in graph.vertexList[cur].getEdges()) {
                 if (!mapBound.isInside(edge.toVertex.point)) {

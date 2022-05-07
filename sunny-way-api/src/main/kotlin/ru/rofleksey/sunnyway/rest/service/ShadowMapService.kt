@@ -8,7 +8,7 @@ import ru.rofleksey.sunnyway.rest.component.GraphComponent
 import ru.rofleksey.sunnyway.rest.types.EdgeWithCost
 import ru.rofleksey.sunnyway.rest.types.GeoPoint
 import ru.rofleksey.sunnyway.util.sun.Sun
-import ru.rofleksey.sunnyway.util.sun.SunCostCalculator
+import ru.rofleksey.sunnyway.util.sun.SunCostCache
 import java.util.*
 
 @Service
@@ -17,9 +17,9 @@ class ShadowMapService(private val graph: GraphComponent) {
         private val log: Logger = LoggerFactory.getLogger(ShadowMapService::class.java)
     }
 
-    private val edgeCostCalculator = SunCostCalculator(graph.graph)
+    private val sunCostCache = SunCostCache(graph.graph)
 
-    fun getShadowMap(center: GeoPoint, radius: Double): List<EdgeWithCost> {
+    fun getShadowMap(center: GeoPoint, radius: Double, time: Long): List<EdgeWithCost> {
         val startTime = System.currentTimeMillis()
         val vertices = graph.locateAll(center, radius)
         val edgesSet = HashSet<GraphEdge>()
@@ -28,16 +28,16 @@ class ShadowMapService(private val graph: GraphComponent) {
             edgesSet.addAll(vertex.getEdges())
         }
         val calendar = Calendar.getInstance()
-        val sunResult = Sun(center.lat, center.lon, 3).run {
+        val sunResult = Sun(center.lat, center.lon, 1).run {
             setTime(calendar.apply {
-                timeInMillis = 1641549609L * 1000L // 07.01.2022 13:00
+                timeInMillis = time
             })
             calculate()
         }
-        edgeCostCalculator.reset(sunResult, true)
+        sunCostCache.reset(sunResult)
         val result = edgesSet.map { graphEdge ->
-            if (edgeCostCalculator.isSunUp()) {
-                EdgeWithCost(graphEdge.fromVertex.point, graphEdge.toVertex.point, edgeCostCalculator.getFactor(graphEdge))
+            if (sunResult.isSunUp()) {
+                EdgeWithCost(graphEdge.fromVertex.point, graphEdge.toVertex.point, sunCostCache.getFactor(graphEdge))
             } else {
                 EdgeWithCost(graphEdge.fromVertex.point, graphEdge.toVertex.point, 1.0)
             }

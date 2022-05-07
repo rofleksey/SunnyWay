@@ -21,24 +21,20 @@ class Sun(private val latitude: Double, private val longitude: Double, private v
         val declinationRad = Math.toRadians(declination)
         val latitudeRad = Math.toRadians(latitude)
         val b = 360.0 / 365.0 * (dayOfTheYear - 81.0) * Math.PI / 180.0
-        // Equation Of Time
-        val eot = 9.87 * sin(2 * b) - 7.53 * cos(b) - 1.5 * sin(b)
-        // Local Solar Time Meridian
-        val lstm = 15.0 * timeZone.toDouble()
-        val timeCorrection = eot + 4.0 * (longitude - lstm)
-        val lst = minutesSinceMidnight / 60.0 + timeCorrection / 60.0
-        val a = -1.0 * (sin(latitudeRad) * sin(declinationRad)) / (cos(latitudeRad) * cos(declinationRad))
-        val localSolarTime = acos(a) / 0.261799 // 0.261799 = Math.toRadians(15)
-        val sunrise = 12.0 - localSolarTime - (timeCorrection / 60.0)
-        val sunset = 12 + localSolarTime - (timeCorrection / 60.0)
-        val hra = Math.toRadians(15.0 * (lst - 12.0))
-        val alt = asin((sin(declinationRad) * sin(latitudeRad)) + (cos(declinationRad) * cos(latitudeRad) * cos(hra)))
-        var azi = acos((cos(latitudeRad) * sin(declinationRad) - cos(declinationRad) * sin(latitudeRad) * cos(hra)) / cos(alt))
-        val zen = Math.PI / 2 - alt
-        if (hra > 0) {
-            azi = 2 * Math.PI - azi
+        val equationOfTime = 9.87 * sin(2 * b) - 7.53 * cos(b) - 1.5 * sin(b)
+        val localSolarTimeMeridian = 15.0 * timeZone.toDouble()
+        val timeCorrection = equationOfTime + 4.0 * (longitude - localSolarTimeMeridian)
+        val localSolarTime = minutesSinceMidnight / 60.0 + timeCorrection / 60.0
+        val hourAngle = Math.toRadians(15.0 * (localSolarTime - 12.0))
+        val elevation =
+            asin(sin(declinationRad) * sin(latitudeRad) + cos(declinationRad) * cos(latitudeRad) * cos(hourAngle))
+        var azimuth = acos(
+            (cos(latitudeRad) * sin(declinationRad) - cos(declinationRad) * sin(latitudeRad) * cos(hourAngle))
+                    / cos(elevation)
+        )
+        if (hourAngle > 0) {
+            azimuth = 2 * Math.PI - azimuth
         }
-        return SunResult(declination, eot, lstm, timeCorrection, localSolarTime, Math.toDegrees(alt), zen, azi, sunrise, sunset)
+        return SunResult(Math.toDegrees(elevation), azimuth)
     }
-
 }

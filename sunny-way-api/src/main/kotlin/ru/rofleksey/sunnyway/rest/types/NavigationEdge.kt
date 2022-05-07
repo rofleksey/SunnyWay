@@ -5,8 +5,8 @@ data class NavigationEdge (
     val toPoint: GeoPoint,
     val edgeId: Int,
     val toVertexId: Int,
+    val direction: Double,
+    val leftShadow: Double,
+    val rightShadow: Double,
     val distance: Double,
-    val time: Long,
-    val cost: Double,
-    val metadata: Map<String, Any?>
 )

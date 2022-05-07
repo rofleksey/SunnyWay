@@ -8,6 +8,6 @@ data class UserNavigationRequest(
     val to: GeoPoint,
     val algorithm: Algorithm,
     val curTime: Long,
-    val timeSampling: Long,
+    val maxFactor: Double,
     val preferShadow: Boolean,
 )

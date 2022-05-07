@@ -1,5 +1,5 @@
 /.idea
 /.gradle
 /build
-data/edges.csv
+data/*.csv
 /certs
