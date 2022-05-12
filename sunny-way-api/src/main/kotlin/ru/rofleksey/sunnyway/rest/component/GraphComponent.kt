@@ -17,7 +17,6 @@ import java.io.IOException
 import java.nio.charset.Charset
 import kotlin.system.exitProcess
 
-
 @Component
 class GraphComponent(private val shutdownManager: ShutdownManager) {
     companion object {
@@ -49,6 +48,7 @@ class GraphComponent(private val shutdownManager: ShutdownManager) {
                         rightShadow = row["right_shadow"]!!.toDouble(),
                         distance = row["distance"]!!.toDouble(),
                         direction = row["direction"]!!.toDouble(),
+                        avoid = row["avoid"]!!.toBoolean()
                     )
                 }.toList()
             }

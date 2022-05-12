@@ -41,7 +41,8 @@ class GraphBuilder(edgeCount: Int) {
             leftShadow = edge.leftShadow,
             rightShadow = edge.rightShadow,
             distance = edge.distance,
-            direction = edge.direction
+            direction = edge.direction,
+            avoid = edge.avoid
         )
         startVertex.addEdge(startGraphEdge)
 
@@ -52,7 +53,8 @@ class GraphBuilder(edgeCount: Int) {
             leftShadow = edge.leftShadow,
             rightShadow = edge.rightShadow,
             distance = edge.distance,
-            direction = edge.direction
+            direction = edge.direction,
+            avoid = edge.avoid
         )
         endVertex.addEdge(endGraphEdge)
     }

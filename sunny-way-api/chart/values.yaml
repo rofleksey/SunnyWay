@@ -1,11 +1,14 @@
-replicaCount: 3
+replicaCount: 2
+
+shardCount: 8
+queueSize: 256
 
 image:
   repository: rofleksey/sunny-way-api
   pullPolicy: Always
   tag: "latest"
 
-imagePullSecrets: []
+imagePullSecrets: [ ]
 nameOverride: ""
 fullnameOverride: ""
 

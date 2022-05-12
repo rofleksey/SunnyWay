@@ -7,7 +7,8 @@ data class GraphEdge(
     val leftShadow: Double,
     val rightShadow: Double,
     val distance: Double,
-    val direction: Double
+    val direction: Double,
+    val avoid: Boolean,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

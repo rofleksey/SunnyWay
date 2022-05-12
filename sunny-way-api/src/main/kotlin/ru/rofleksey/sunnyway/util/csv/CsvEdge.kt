@@ -9,4 +9,5 @@ data class CsvEdge(
     val rightShadow: Double,
     val distance: Double,
     val direction: Double,
+    val avoid: Boolean,
 )

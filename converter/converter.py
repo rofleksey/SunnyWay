@@ -22,11 +22,11 @@ from typing import Any, List
 
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
+TREE_RADIUS = 0.5
 SCAN_RADIUS = 25
 EARTH_RADIUS = 6371000
 MAX_BUILDING_NODE_COUNT = 50000
 MAX_EDGE_SIZE = 10000
-
 
 class WayType(Enum):
     NONE = 0
@@ -48,6 +48,7 @@ class Node:
 @dataclass(frozen=True)
 class Road:
     nodes: List[Node]
+    avoid: bool
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,18 @@ class BuildingScanResult:
 
 @dataclass(frozen=True)
 class Building:
+    id: int
+    shape: Any
+
+    def __hash__(self):
+        return hash(id)
+
+    def __eq__(self, other):
+        return self.id == other.id
+
+
+@dataclass(frozen=True)
+class Tree:
     id: int
     shape: Any
 
@@ -95,19 +108,12 @@ class Edge:
     right_shadow: float
     distance: float
     direction: float
+    avoid: bool
 
     def to_dict(self):
-        output = {}
-        output['start_lat'] = self.start.lat
-        output['start_lon'] = self.start.lon
-        output['end_lat'] = self.end.lat
-        output['end_lon'] = self.end.lon
-        output['left_shadow'] = self.left_shadow
-        output['right_shadow'] = self.right_shadow
-        output['distance'] = self.distance
-        output['direction'] = self.direction
-        return output
-
+        return {'start_lat': self.start.lat, 'start_lon': self.start.lon, 'end_lat': self.end.lat,
+                'end_lon': self.end.lon, 'left_shadow': self.left_shadow, 'right_shadow': self.right_shadow,
+                'distance': self.distance, 'direction': self.direction, 'avoid': self.avoid}
 
 def consecutive_item_pairs(iterable):
     iters = itertools.tee(iterable, 2)
@@ -124,24 +130,36 @@ print('Parsing xml objects...')
 external_node_list = map.findall('.//node')
 external_way_list = map.findall('.//way')
 
+print('Doing garbage collection...')
 del map
 del tree
-
 gc.collect()
 
 node_map = {}
 building_node_list = []
+tree_node_list = []
 road_list = []
 buildings_list = []
 
 print('Loading nodes...')
 for node in tqdm(external_node_list):
+    tags = node.findall('.//tag')
+    is_tree = False
+    for tag in tags:
+        key = tag.get('k')
+        value = tag.get('v')
+        if key == 'natural' and value == 'tree':
+            is_tree = True
     id = int(node.get('id'))
     lat = float(node.get('lat'))
     lon = float(node.get('lon'))
     x, y, _, _ = utm.from_latlon(lat, lon)
     shapely_point = ShapelyPoint(x, y)
     new_node = Node(lat, lon, shapely_point)
+    if is_tree:
+        new_tree = Tree(id, shapely_point)
+        new_node.parent = new_tree
+        tree_node_list.append(new_node)
     node_map[id] = new_node
 
 highway_types = set()
@@ -152,17 +170,25 @@ for way in tqdm(external_way_list):
     node_tags = way.findall('.//nd')
     way_type = WayType.NONE
     id = way.get('id')
+    avoid = False
     details = ""
     for tag in tags:
         key = tag.get('k')
         value = tag.get('v')
         if key == 'highway':
             if value == 'residential' or value == 'unclassified' or value == 'platform' or value == 'corridor' or value == 'elevator' or value == 'track' or value == 'cycleway' or value == 'living_street' or value == 'footway' or value == 'bridleway' or value == 'service' or value == 'pedestrian' or value == 'steps' or value == 'path':
-                # if True:
+                if value == 'residential':
+                    avoid = True
                 way_type = WayType.ROAD
             elif not (value in highway_types):
                 print(f'new highway type: {value}')
                 highway_types.add(value)
+        elif key == 'natural':
+            if value == 'tree_row':
+                way_type = WayType.BUILDING
+        elif key == 'barrier':
+            if value == 'hedge' or value == 'wall' or value == 'city_wall' or value == 'wall' or value == 'retaining_wall':
+                way_type = WayType.BUILDING
         elif 'building' in key:
             way_type = WayType.BUILDING
 
@@ -184,7 +210,7 @@ for way in tqdm(external_way_list):
         elif len(node_list) == 2:
             shape = LineString([(n.shapely_point.x, n.shapely_point.y) for n in node_list])
         elif len(node_list) == 1:
-            shape = Point(node_list[0].shapely_point.x, node_list[0].shapely_point.y)
+            shape = ShapelyPoint(node_list[0].shapely_point.x, node_list[0].shapely_point.y)
         else:
             shape = LineString()
         new_building = Building(id, shape)
@@ -194,25 +220,28 @@ for way in tqdm(external_way_list):
         buildings_list.append(new_building)
     elif way_type == WayType.ROAD:
         # print(f'result = {temp_name}')
-        new_road = Road(node_list)
+        new_road = Road(node_list, avoid)
         road_list.append(new_road)
+
+print("Doing garbage collection...")
 
 del external_node_list
 del external_way_list
 gc.collect()
 
-print(f'Loaded {len(node_map)} nodes, {len(road_list)} roads and {len(buildings_list)} buildings')
+print(
+    f'Loaded {len(node_map)} nodes, {len(road_list)} roads, {len(tree_node_list)} trees and {len(buildings_list)} buildings')
 
-print('Building node tree...')
+print('Building trees...')
 
-node_tree_points = [[node.shapely_point.x, node.shapely_point.y] for node in building_node_list]
-node_tree = BallTree(node_tree_points)
+building_tree = BallTree([[node.shapely_point.x, node.shapely_point.y] for node in building_node_list])
+tree_tree = BallTree([[node.shapely_point.x, node.shapely_point.y] for node in tree_node_list])
 
 
 def break_geometry(geom, list, depthLimiter):
     if depthLimiter == 0:
         return
-    if isinstance(geom, ShapelyPoint) or isinstance(geom, LineString):
+    if isinstance(geom, ShapelyPoint):
         return
     if isinstance(geom, GeometryCollection) or isinstance(geom, MultiPoint):
         for p in geom.geoms:
@@ -227,7 +256,7 @@ def break_geometry(geom, list, depthLimiter):
 
 def get_buildings_in_rect(polygon, distance):
     center = polygon.centroid
-    close_indices = node_tree.query_radius(
+    close_indices = building_tree.query_radius(
         [[center.x, center.y]], distance)
     parent_set = set()
     # prevents scanning edge with 896824 buildings on it
@@ -243,23 +272,64 @@ def get_buildings_in_rect(polygon, distance):
             if parent.shape.intersects(polygon):
                 inter = make_valid(parent.shape).intersection(polygon)
                 break_geometry(inter, result, 10)
-        except:
-            print("error intersecting forms, skipping")
+        except BaseException as e:
+            print(f'Error intersecting forms (building): {e}')
     return result
 
 
-def calculate_shadow_size(buildings, segment):
+def get_trees_in_rect(polygon, distance):
+    center = polygon.centroid
+    close_indices = tree_tree.query_radius(
+        [[center.x, center.y]], distance)
+    parent_set = set()
+    # prevents scanning edge with 896824 buildings on it
+    if len(close_indices[0]) > MAX_BUILDING_NODE_COUNT:
+        print(f'Ignored polygon with {len(close_indices[0])} building nodes near it (distance = {distance})')
+        return []
+    for i in close_indices[0]:
+        node = tree_node_list[i]
+        parent_set.add(node.parent)
+    result = []
+    for parent in parent_set:
+        try:
+            if polygon.contains(parent.shape):
+                result.append(parent.shape)
+        except BaseException as e:
+            print(f'Error intersecting forms (tree): {e}')
+    return result
+
+
+def calculate_shadow_size(buildings, trees, segment):
+    if segment.length == 0:
+        return
     segments = []
     for building in buildings:
         min_dist = None
         max_dist = None
-        for x, y in building.exterior.coords:
-            exterior_point = ShapelyPoint(x, y)
-            proj_dist = segment.project(exterior_point, normalized=True)
-            if min_dist == None or min_dist > proj_dist:
-                min_dist = proj_dist
-            if max_dist == None or max_dist < proj_dist:
-                max_dist = proj_dist
+        if isinstance(building, LineString):
+            for x, y in building.coords:
+                exterior_point = ShapelyPoint(x, y)
+                proj_dist = segment.project(exterior_point, normalized=True)
+                if min_dist is None or min_dist > proj_dist:
+                    min_dist = proj_dist
+                if max_dist is None or max_dist < proj_dist:
+                    max_dist = proj_dist
+            if min_dist != max_dist:
+                segments.append((min_dist, max_dist))
+        else:
+            for x, y in building.exterior.coords:
+                exterior_point = ShapelyPoint(x, y)
+                proj_dist = segment.project(exterior_point, normalized=True)
+                if min_dist is None or min_dist > proj_dist:
+                    min_dist = proj_dist
+                if max_dist is None or max_dist < proj_dist:
+                    max_dist = proj_dist
+            if min_dist != max_dist:
+                segments.append((min_dist, max_dist))
+    for point in trees:
+        proj_dist = segment.project(point, normalized=False)
+        min_dist = max(0, proj_dist - TREE_RADIUS / 2) / segment.length
+        max_dist = min(segment.length, proj_dist + TREE_RADIUS / 2) / segment.length
         if min_dist != max_dist:
             segments.append((min_dist, max_dist))
     if len(segments) == 0:
@@ -267,8 +337,8 @@ def calculate_shadow_size(buildings, segment):
     # Klee’s Algorithm
     points = [0] * (len(segments) * 2)
     for i, s in enumerate(segments):
-        points[i*2] = (s[0], False)
-        points[i*2 + 1] = (s[1], True)
+        points[i * 2] = (s[0], False)
+        points[i * 2 + 1] = (s[1], True)
     points.sort(key=lambda x: x[0])
     counter = 0
     result = 0
@@ -290,21 +360,23 @@ def scan_buildings(n1, n2):
     shapely_n1_right = segment_reverse.parallel_offset(SCAN_RADIUS, 'left').boundary[1]
     shapely_n1_left = segment_reverse.parallel_offset(SCAN_RADIUS, 'right').boundary[0]
     left_rect = Polygon([n1.shapely_point, shapely_n1_left,
-                        shapely_n2_left, n2.shapely_point])
+                         shapely_n2_left, n2.shapely_point])
     right_rect = Polygon([n1.shapely_point, shapely_n1_right,
-                        shapely_n2_right, n2.shapely_point])
+                          shapely_n2_right, n2.shapely_point])
     distance = 2 * math.sqrt(segment.length ** 2 + SCAN_RADIUS ** 2)
     left_buildings = get_buildings_in_rect(left_rect, distance)
     right_buildings = get_buildings_in_rect(right_rect, distance)
-    left_shadow = calculate_shadow_size(left_buildings, segment)
-    right_shadow = calculate_shadow_size(right_buildings, segment)
+    left_trees = get_trees_in_rect(left_rect, distance)
+    right_trees = get_trees_in_rect(right_rect, distance)
+    left_shadow = calculate_shadow_size(left_buildings, left_trees, segment)
+    right_shadow = calculate_shadow_size(right_buildings, right_trees, segment)
     return BuildingScanResult(left=left_shadow, right=right_shadow)
 
 
 print('Writing edges...')
 with open('output.csv', mode='w', encoding="utf-8") as csv_file:
     fieldnames = ['start_lat', 'start_lon', 'end_lat', 'end_lon',
-                  'left_shadow', 'right_shadow', 'distance', 'direction']
+                  'left_shadow', 'right_shadow', 'distance', 'direction', 'avoid']
     writer = csv.DictWriter(csv_file, fieldnames=fieldnames, dialect="unix")
     writer.writeheader()
     #[138560:]
@@ -317,6 +389,6 @@ with open('output.csv', mode='w', encoding="utf-8") as csv_file:
                 continue
             direction = geo_result['azi1']
             scan_result = scan_buildings(n1, n2)
-            new_edge = Edge(n1, n2, scan_result.left, scan_result.right, line_length, direction)
+            new_edge = Edge(n1, n2, scan_result.left, scan_result.right, line_length, direction, road.avoid)
             writer.writerow(new_edge.to_dict())
 print("Finishing...")

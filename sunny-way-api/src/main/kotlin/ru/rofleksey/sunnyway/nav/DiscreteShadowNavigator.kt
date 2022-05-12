@@ -19,6 +19,7 @@ class DiscreteShadowNavigator(
     companion object {
         private val log: Logger = LoggerFactory.getLogger(DiscreteShadowNavigator::class.java)
         private const val TIME_SAMPLING = 15 * 60 * 1000
+        private const val AVOID_FACTOR = 1000
     }
 
     private val totalCost = Array(graph.vertexList.size) { 0.0 }
@@ -99,7 +100,11 @@ class DiscreteShadowNavigator(
                 } else {
                     edge.distance
                 }
-                val newCost = totalCost[cur] + edgeCost
+                val newCost = if (edge.avoid) {
+                    totalCost[cur] + AVOID_FACTOR * edgeCost
+                } else {
+                    totalCost[cur] + edgeCost
+                }
                 if (newCost < totalCost[edge.toVertex.graphId]) {
                     setTotalCost(edge.toVertex.graphId, newCost)
                     prevEdge[edge.toVertex.graphId] = edge

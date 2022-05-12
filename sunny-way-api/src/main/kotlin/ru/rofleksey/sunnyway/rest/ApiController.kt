@@ -3,7 +3,6 @@ package ru.rofleksey.sunnyway.rest
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.web.bind.annotation.*
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import ru.rofleksey.sunnyway.nav.NavigationException
 import ru.rofleksey.sunnyway.nav.NavigationRequest
 import ru.rofleksey.sunnyway.rest.component.GraphComponent
@@ -24,7 +23,7 @@ open class ApiController(
     private val serviceAreaService: ServiceAreaService,
     private val shadowMapService: ShadowMapService,
     private val graph: GraphComponent
-) : WebMvcConfigurer {
+) {
     companion object {
         private const val MAX_DISTANCE_DEFAULT = 100.0
         private const val MAX_SHADOW_MAP_RADIUS = 750.0
@@ -32,7 +31,7 @@ open class ApiController(
     }
 
     @GetMapping("/service-area")
-    fun getServiceArea(): UserPolygonResponse {
+    suspend fun getServiceArea(): UserPolygonResponse {
         val list = serviceAreaService.getServiceArea()
         return UserPolygonResponse(list)
     }
@@ -49,7 +48,7 @@ open class ApiController(
     }
 
     @PostMapping("/shadow-map")
-    fun getShadowMap(@RequestBody req: UserShadowMapRequest): UserShadowMapResponse {
+    suspend fun getShadowMap(@RequestBody req: UserShadowMapRequest): UserShadowMapResponse {
         if (req.radius >= MAX_SHADOW_MAP_RADIUS) {
             throw NavigationException("Radius too large")
         }
@@ -92,7 +91,7 @@ open class ApiController(
     }
 
     @PostMapping("/nav")
-    fun navigate(@RequestBody req: UserNavigationRequest): UserNavigationResponse {
+    suspend fun navigate(@RequestBody req: UserNavigationRequest): UserNavigationResponse {
         val locationTime = System.currentTimeMillis()
         val fromId = graph.locate(req.from, MAX_DISTANCE_DEFAULT)
             ?: throw NavigationException("Failed to locate starting point")
