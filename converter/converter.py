@@ -176,7 +176,7 @@ for way in tqdm(external_way_list):
         key = tag.get('k')
         value = tag.get('v')
         if key == 'highway':
-            if value == 'residential' or value == 'unclassified' or value == 'platform' or value == 'corridor' or value == 'elevator' or value == 'track' or value == 'cycleway' or value == 'living_street' or value == 'footway' or value == 'bridleway' or value == 'service' or value == 'pedestrian' or value == 'steps' or value == 'path':
+            if value == 'residential' or value == 'unclassified' or value == 'platform' or value == 'corridor' or value == 'elevator' or value == 'track' or value == 'living_street' or value == 'footway' or value == 'bridleway' or value == 'service' or value == 'pedestrian' or value == 'steps' or value == 'path':
                 if value == 'residential':
                     avoid = True
                 way_type = WayType.ROAD
