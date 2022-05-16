@@ -68,7 +68,6 @@ class GraphComponent(private val shutdownManager: ShutdownManager) {
         }
     }
 
-    @Synchronized
     fun locate(point: GeoPoint, maxDistance: Double): Int? {
         val newX = Math.toRadians(point.lat)
         val newY = Math.toRadians(point.lon)
@@ -76,7 +75,6 @@ class GraphComponent(private val shutdownManager: ShutdownManager) {
         return kdTree.nearest(KdPoint(newX, newY), newDist).closest?.id
     }
 
-    @Synchronized
     fun locateAll(point: GeoPoint, distance: Double): List<Int> {
         val newX = Math.toRadians(point.lat)
         val newY = Math.toRadians(point.lon)

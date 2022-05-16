@@ -1,7 +1,7 @@
-replicaCount: 2
+replicaCount: 1
 
 shardCount: 8
-queueSize: 256
+queueSize: 16
 
 image:
   repository: rofleksey/sunny-way-api

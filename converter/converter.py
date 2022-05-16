@@ -23,10 +23,12 @@ from typing import Any, List
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
 TREE_RADIUS = 0.5
-SCAN_RADIUS = 25
+SCAN_RECT_WIDTH = 25
+SCAN_RADIUS = 300
 EARTH_RADIUS = 6371000
 MAX_BUILDING_NODE_COUNT = 50000
 MAX_EDGE_SIZE = 10000
+
 
 class WayType(Enum):
     NONE = 0
@@ -43,6 +45,12 @@ class Node:
 
     def to_point(self):
         return ShapelyPoint(lat, lon)
+
+
+@dataclass
+class TreeNode:
+    point: ShapelyPoint
+    parent: Any
 
 
 @dataclass(frozen=True)
@@ -139,7 +147,8 @@ node_map = {}
 building_node_list = []
 tree_node_list = []
 road_list = []
-buildings_list = []
+building_count = 0
+node_count = 0
 
 print('Loading nodes...')
 for node in tqdm(external_node_list):
@@ -158,9 +167,9 @@ for node in tqdm(external_node_list):
     new_node = Node(lat, lon, shapely_point)
     if is_tree:
         new_tree = Tree(id, shapely_point)
-        new_node.parent = new_tree
-        tree_node_list.append(new_node)
+        tree_node_list.append(TreeNode(shapely_point, new_tree))
     node_map[id] = new_node
+    node_count += 1
 
 highway_types = set()
 
@@ -206,18 +215,16 @@ for way in tqdm(external_way_list):
         node_list.append(target_node)
     if way_type == WayType.BUILDING:
         if len(node_list) > 2:
-            shape = Polygon([(n.shapely_point.x, n.shapely_point.y) for n in node_list])
+            shape = make_valid(Polygon([(n.shapely_point.x, n.shapely_point.y) for n in node_list]))
         elif len(node_list) == 2:
-            shape = LineString([(n.shapely_point.x, n.shapely_point.y) for n in node_list])
+            shape = make_valid(LineString([(n.shapely_point.x, n.shapely_point.y) for n in node_list]))
         elif len(node_list) == 1:
             shape = ShapelyPoint(node_list[0].shapely_point.x, node_list[0].shapely_point.y)
         else:
             shape = LineString()
         new_building = Building(id, shape)
-        for node in node_list:
-            building_node_list.append(node)
-            node.parent = new_building
-        buildings_list.append(new_building)
+        building_node_list.append(TreeNode(shape.centroid, new_building))
+        building_count += 1
     elif way_type == WayType.ROAD:
         # print(f'result = {temp_name}')
         new_road = Road(node_list, avoid)
@@ -227,15 +234,15 @@ print("Doing garbage collection...")
 
 del external_node_list
 del external_way_list
+del node_map
 gc.collect()
 
-print(
-    f'Loaded {len(node_map)} nodes, {len(road_list)} roads, {len(tree_node_list)} trees and {len(buildings_list)} buildings')
+print(f'Loaded {node_count} nodes, {len(road_list)} roads, {len(tree_node_list)} trees and {building_count} buildings')
 
 print('Building trees...')
 
-building_tree = BallTree([[node.shapely_point.x, node.shapely_point.y] for node in building_node_list])
-tree_tree = BallTree([[node.shapely_point.x, node.shapely_point.y] for node in tree_node_list])
+building_tree = BallTree([[node.point.x, node.point.y] for node in building_node_list])
+tree_tree = BallTree([[node.point.x, node.point.y] for node in tree_node_list])
 
 
 def break_geometry(geom, list, depthLimiter):
@@ -254,41 +261,33 @@ def break_geometry(geom, list, depthLimiter):
     list.append(geom)
 
 
-def get_buildings_in_rect(polygon, distance):
+def get_buildings(polygon):
     center = polygon.centroid
     close_indices = building_tree.query_radius(
-        [[center.x, center.y]], distance)
+        [[center.x, center.y]], SCAN_RADIUS)
     parent_set = set()
-    # prevents scanning edge with 896824 buildings on it
-    if len(close_indices[0]) > MAX_BUILDING_NODE_COUNT:
-        print(f'Ignored polygon with {len(close_indices[0])} building nodes near it (distance = {distance})')
-        return []
     for i in close_indices[0]:
-        node = building_node_list[i]
-        parent_set.add(node.parent)
+        tree_node = building_node_list[i]
+        parent_set.add(tree_node.parent)
     result = []
     for parent in parent_set:
         try:
             if parent.shape.intersects(polygon):
-                inter = make_valid(parent.shape).intersection(polygon)
-                break_geometry(inter, result, 10)
+                inter = parent.shape.intersection(polygon)
+                break_geometry(inter, result, 5)
         except BaseException as e:
             print(f'Error intersecting forms (building): {e}')
     return result
 
 
-def get_trees_in_rect(polygon, distance):
+def get_trees(polygon, distance):
     center = polygon.centroid
     close_indices = tree_tree.query_radius(
         [[center.x, center.y]], distance)
     parent_set = set()
-    # prevents scanning edge with 896824 buildings on it
-    if len(close_indices[0]) > MAX_BUILDING_NODE_COUNT:
-        print(f'Ignored polygon with {len(close_indices[0])} building nodes near it (distance = {distance})')
-        return []
     for i in close_indices[0]:
-        node = tree_node_list[i]
-        parent_set.add(node.parent)
+        tree_node = tree_node_list[i]
+        parent_set.add(tree_node.parent)
     result = []
     for parent in parent_set:
         try:
@@ -355,19 +354,19 @@ def calculate_shadow_size(buildings, trees, segment):
 def scan_buildings(n1, n2):
     segment = LineString([n1.shapely_point, n2.shapely_point])
     segment_reverse = LineString([n2.shapely_point, n1.shapely_point])
-    shapely_n2_left = segment.parallel_offset(SCAN_RADIUS, 'left').boundary[1]
-    shapely_n2_right = segment.parallel_offset(SCAN_RADIUS, 'right').boundary[0]
-    shapely_n1_right = segment_reverse.parallel_offset(SCAN_RADIUS, 'left').boundary[1]
-    shapely_n1_left = segment_reverse.parallel_offset(SCAN_RADIUS, 'right').boundary[0]
+    shapely_n2_left = segment.parallel_offset(SCAN_RECT_WIDTH, 'left').boundary[1]
+    shapely_n2_right = segment.parallel_offset(SCAN_RECT_WIDTH, 'right').boundary[0]
+    shapely_n1_right = segment_reverse.parallel_offset(SCAN_RECT_WIDTH, 'left').boundary[1]
+    shapely_n1_left = segment_reverse.parallel_offset(SCAN_RECT_WIDTH, 'right').boundary[0]
     left_rect = Polygon([n1.shapely_point, shapely_n1_left,
                          shapely_n2_left, n2.shapely_point])
     right_rect = Polygon([n1.shapely_point, shapely_n1_right,
                           shapely_n2_right, n2.shapely_point])
-    distance = 2 * math.sqrt(segment.length ** 2 + SCAN_RADIUS ** 2)
-    left_buildings = get_buildings_in_rect(left_rect, distance)
-    right_buildings = get_buildings_in_rect(right_rect, distance)
-    left_trees = get_trees_in_rect(left_rect, distance)
-    right_trees = get_trees_in_rect(right_rect, distance)
+    left_buildings = get_buildings(left_rect)
+    right_buildings = get_buildings(right_rect)
+    distance = 2 * math.sqrt(segment.length ** 2 + SCAN_RECT_WIDTH ** 2)
+    left_trees = get_trees(left_rect, distance)
+    right_trees = get_trees(right_rect, distance)
     left_shadow = calculate_shadow_size(left_buildings, left_trees, segment)
     right_shadow = calculate_shadow_size(right_buildings, right_trees, segment)
     return BuildingScanResult(left=left_shadow, right=right_shadow)
@@ -379,7 +378,6 @@ with open('output.csv', mode='w', encoding="utf-8") as csv_file:
                   'left_shadow', 'right_shadow', 'distance', 'direction', 'avoid']
     writer = csv.DictWriter(csv_file, fieldnames=fieldnames, dialect="unix")
     writer.writeheader()
-    #[138560:]
     for road in tqdm(road_list):
         for n1, n2 in consecutive_item_pairs(road.nodes):
             geo_result = Geodesic.WGS84.Inverse(n1.lat, n1.lon, n2.lat, n2.lon)

@@ -84,13 +84,15 @@ function postPath(
 	}).then((res) => {
 		const array = [];
 		res.data.result.path.forEach((edge) => {
-			const {fromPoint, toPoint, edgeId, factor} = edge;
+			const {fromPoint, toPoint, edgeId, factor, leftShadow, rightShadow} = edge;
 			let content = [];
 			content.push(`distance = ${edge.distance.toFixed(2)}`);
 			content.push(`time to walk (minutes) = ${(edge.time / 60000).toFixed(2)}`);
 			if (edge.factor > 0) {
 				content.push(`factor = ${factor.toFixed(2)}`);
 			}
+			content.push(`buildings factor (left) = ${leftShadow.toFixed(2)}`);
+			content.push(`buildings factor (right) = ${rightShadow.toFixed(2)}`);
 			array.push({
 				id: edgeId,
 				positions: [[fromPoint.lat, fromPoint.lon], [toPoint.lat, toPoint.lon]],
@@ -264,11 +266,14 @@ function PathPolyline({id, color, positions, content, defaultColor}) {
   return <Polyline
     key={id}
     onMouseOver={(e) => {
+      console.log(`on mouse over ${id}`);
       e.target.openPopup();
     }}
     onMouseOut={(e) => {
+      console.log(`on mouse out ${id}`);
       e.target.closePopup();
     }}
+    interactive={true}
     pathOptions={{color: actualColor, weight: actualWeight}}
     positions={positions}>
     <Popup>
@@ -715,24 +720,11 @@ function App() {
 				<TileLayer
 					url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 				/>
-				<Pane name="serviceArea" style={{ zIndex: 410 }}>
-				  { serviceArea && <Polyline pathOptions={{color: 'red', weight: 5}} positions={serviceArea} /> }
-				</Pane>
-				<Pane name="shortestPath" style={{ zIndex: 403 }}>
-          { shortestPath && <MemoPathComponent path={shortestPath} defaultColor={true} />}
-        </Pane>
-        <Pane name="secondPath" style={{ zIndex: 404 }}>
-          { secondPath && <MemoPathComponent path={secondPath} defaultColor={false} />}
-        </Pane>
-        <Pane name="markers" style={{ zIndex: 408 }}>
-          { markers.startMarker && <Marker position={markers.startMarker} /> }
-          { markers.endMarker && <Marker position={markers.endMarker} /> }
-        </Pane>
-				<Pane name="shade" style={{ zIndex: 401 }}>
-				  { actualShade && actualShade.map((actualShadeShard) => (
-				    <MemoShadeComponent path={actualShadeShard} opacity={shadeOpacity}/>
-				  ))}
-				</Pane>
+        { serviceArea && <Polyline pathOptions={{color: 'red', weight: 5}} positions={serviceArea} /> }
+        { shortestPath && <MemoPathComponent path={shortestPath} defaultColor={true} />}
+        { secondPath && <MemoPathComponent path={secondPath} defaultColor={false} />}
+        { markers.startMarker && <Marker position={markers.startMarker} /> }
+        { markers.endMarker && <Marker position={markers.endMarker} /> }
 				<MapListener
 					markers={markers}
 					setMarkers={setMarkers}

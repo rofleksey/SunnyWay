@@ -10,4 +10,6 @@ data class UserNavigationEdge(
     val distance: Double,
     val time: Long,
     val factor: Double,
+    val leftShadow: Double,
+    val rightShadow: Double,
 )

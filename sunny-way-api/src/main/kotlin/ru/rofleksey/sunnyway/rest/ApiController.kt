@@ -1,5 +1,7 @@
 package ru.rofleksey.sunnyway.rest
 
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.withContext
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.web.bind.annotation.*
@@ -11,10 +13,12 @@ import ru.rofleksey.sunnyway.rest.service.NavigationService
 import ru.rofleksey.sunnyway.rest.service.ServiceAreaService
 import ru.rofleksey.sunnyway.rest.service.ShadowMapService
 import ru.rofleksey.sunnyway.rest.types.NavigationEdge
+import ru.rofleksey.sunnyway.util.Config
 import ru.rofleksey.sunnyway.util.Util
 import ru.rofleksey.sunnyway.util.sun.Sun
 import ru.rofleksey.sunnyway.util.sun.SunResult
 import java.util.*
+import java.util.concurrent.Executors
 
 @RestController
 @RequestMapping("api")
@@ -22,13 +26,16 @@ open class ApiController(
     private val navigationService: NavigationService,
     private val serviceAreaService: ServiceAreaService,
     private val shadowMapService: ShadowMapService,
-    private val graph: GraphComponent
+    private val graph: GraphComponent,
+    config: Config,
 ) {
     companion object {
         private const val MAX_DISTANCE_DEFAULT = 100.0
         private const val MAX_SHADOW_MAP_RADIUS = 750.0
         private val log: Logger = LoggerFactory.getLogger(ApiController::class.java)
     }
+
+    private val miscDispatcher = Executors.newFixedThreadPool(config.shardCount).asCoroutineDispatcher()
 
     @GetMapping("/service-area")
     suspend fun getServiceArea(): UserPolygonResponse {
@@ -85,7 +92,9 @@ open class ApiController(
                 edge.toVertexId,
                 edge.distance,
                 traverseTime,
-                factor
+                factor,
+                edge.leftShadow,
+                edge.rightShadow
             )
         }
     }
@@ -93,10 +102,14 @@ open class ApiController(
     @PostMapping("/nav")
     suspend fun navigate(@RequestBody req: UserNavigationRequest): UserNavigationResponse {
         val locationTime = System.currentTimeMillis()
-        val fromId = graph.locate(req.from, MAX_DISTANCE_DEFAULT)
-            ?: throw NavigationException("Failed to locate starting point")
-        val toId = graph.locate(req.to, MAX_DISTANCE_DEFAULT)
-            ?: throw NavigationException("Failed to locate ending point")
+        val fromId = withContext(miscDispatcher) {
+            graph.locate(req.from, MAX_DISTANCE_DEFAULT)
+                ?: throw NavigationException("Failed to locate starting point")
+        }
+        val toId = withContext(miscDispatcher) {
+            graph.locate(req.to, MAX_DISTANCE_DEFAULT)
+                ?: throw NavigationException("Failed to locate ending point")
+        }
         log.info("Located points in {} ms", System.currentTimeMillis() - locationTime)
         val navRequest = NavigationRequest(fromId, toId, req.curTime, req.maxFactor, req.preferShadow)
         log.info("Processing #{}->#{} ({})...", fromId, toId, req.algorithm)
@@ -113,7 +126,9 @@ open class ApiController(
             log.info("No path found #{}->#{}", fromId, toId)
             throw NavigationException("No path found")
         }
-        val userEdges = mapToUser(result.path, req.curTime)
+        val userEdges = withContext(miscDispatcher) {
+            mapToUser(result.path, req.curTime)
+        }
         return UserNavigationResponse(UserNavigationResult(userEdges, result.computeTime))
     }
 }
